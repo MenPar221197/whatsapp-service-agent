@@ -1,0 +1,851 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "messages"
+        ],
+        "options": {
+          "messageStatusUpdates": [
+            "failed"
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.whatsAppTrigger",
+      "typeVersion": 1,
+      "position": [
+        -16,
+        784
+      ],
+      "id": "40a139f9-933a-499e-aa9b-7dc758e94516",
+      "name": "Recibir WhatsApp Meta"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "70111c23-b410-4b95-a35b-1f0f3239d9ca",
+              "name": "businessPhone",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "f9b97e55-4bf3-462f-82e7-d00de6f8ef14",
+              "name": "managerPhone",
+              "value": "",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        208,
+        784
+      ],
+      "id": "5c5a7ebc-3ef9-4c93-81a2-5131aeeef9f2",
+      "name": "Configurar Meta"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Recibe eventos del nodo oficial WhatsApp Trigger. No usa tokens ni hace peticiones.\nconst norm = v => String(v ?? '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase().trim();\nconst digits = v => String(v ?? '').replace(/^whatsapp:/i, '').replace(/\\D/g, '');\nconst canonical = v => digits(v).replace(/^521(\\d{10})$/, '52$1');\nconst output = [];\nfor (const [index, item] of $input.all().entries()) {\n  const value = item.json;\n  const businessPhone = canonical(value.businessPhone);\n  if (!/^[1-9]\\d{6,14}$/.test(businessPhone)) throw new Error('Revisa businessPhone en Configurar Meta: número del restaurante con código de país.');\n  const phoneNumberId = String(value.metadata?.phone_number_id ?? '').trim();\n  const displayedPhone = canonical(value.metadata?.display_phone_number);\n  if (!displayedPhone || !/^\\d+$/.test(phoneNumberId)) throw new Error('Meta no incluyó metadata.display_phone_number y metadata.phone_number_id. Prueba enviando un WhatsApp real al número del restaurante.');\n  if (displayedPhone !== businessPhone) continue;\n  const managerPhone = String(value.managerPhone ?? '').trim();\n  if (managerPhone && !/^[1-9]\\d{6,14}$/.test(digits(managerPhone))) throw new Error('Revisa managerPhone en Configurar Meta: número del encargado con código de país o déjalo vacío.');\n  if (managerPhone && canonical(managerPhone) === businessPhone) throw new Error('managerPhone debe ser un WhatsApp distinto al número del restaurante; déjalo vacío para guardar solicitudes sin avisos automáticos.');\n  for (const status of value.statuses ?? []) {\n    if (status.status === 'failed') {\n      const detail = (status.errors ?? []).map(e => `${e.code ?? ''}: ${e.title ?? e.message ?? 'Error de entrega'}`).join('; ');\n      throw new Error(`Meta notificó un mensaje NO ENTREGADO (${status.id ?? 'sin ID'}). ${detail}. Revisa esta ejecución y la ventana de atención de 24 horas.`);\n    }\n  }\n  for (const message of value.messages ?? []) {\n    const from = String(message.from ?? '').replace(/^\\+/, '');\n    const eventId = String(message.id ?? '');\n    if (!/^[1-9]\\d{6,14}$/.test(from) || !eventId || eventId.length > 512) continue;\n    if (canonical(from) === businessPhone) continue;\n    const type = String(message.type ?? 'unknown');\n    if (type === 'reaction' || type === 'system') continue;\n    let text = '';\n    if (type === 'text') text = String(message.text?.body ?? '');\n    if (type === 'button') text = String(message.button?.text ?? message.button?.payload ?? '');\n    if (type === 'interactive') {\n      const selected = message.interactive?.button_reply ?? message.interactive?.list_reply;\n      text = String(selected?.title ?? selected?.id ?? '');\n    }\n    const attachment = ['image', 'document', 'audio', 'video', 'sticker'].includes(type) ? message[type] : null;\n    const media = attachment?.id ? [{\n      id: String(attachment.id), provider: 'meta',\n      contentType: String(attachment.mime_type ?? ''),\n      filename: String(attachment.filename ?? '').slice(0, 255),\n      sha256: String(attachment.sha256 ?? ''),\n    }] : [];\n    if (!text && attachment?.caption) text = String(attachment.caption);\n    text = text.trim();\n    let fallbackReply = '';\n    if (!['text', 'button', 'interactive', 'image', 'document'].includes(type)) {\n      fallbackReply = 'Por ahora necesito tus datos por escrito. Puedes escribir menú, pedido, reservación, evento, facturación o asesor.';\n    } else if (text.length > 4096) {\n      fallbackReply = 'Tu mensaje es muy largo. Envíalo en partes de menos de 4,000 caracteres.';\n    } else if (!text && !media.length) {\n      fallbackReply = 'No pude leer ese mensaje. Escribe tu solicitud en texto, por favor.';\n    }\n    const profile = (value.contacts ?? []).find(c => String(c.wa_id) === from);\n    const isManager = !!managerPhone && canonical(from) === canonical(managerPhone);\n    output.push({json: {\n      phone: `whatsapp:+${from}`, metaRecipient: from, phoneNumberId, businessPhone,\n      text: text.slice(0, 4096), eventId, messageType: type,\n      isManager,\n      managerPhone: managerPhone ? `whatsapp:+${digits(managerPhone)}` : '',\n      managerCommand: isManager && /^(panel|encargado|pendientes|aprobar|rechazar)(\\s|$)/.test(norm(text)),\n      profileName: String(profile?.profile?.name ?? '').slice(0, 100),\n      media, receivedMedia: media.length, valid: true, ignoredReply: '', fallbackReply,\n    }, pairedItem: {item: index}});\n  }\n}\nreturn output;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        432,
+        784
+      ],
+      "id": "faf06cac-146c-46dc-ac5a-bb3025d2f57d",
+      "name": "Normalizar Meta"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        640,
+        784
+      ],
+      "id": "d585b2a4-e6b9-4234-800d-fc135c85936c",
+      "name": "Procesar uno por uno"
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all();"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        864,
+        864
+      ],
+      "id": "2c156581-d03c-4f52-843d-f1692e6aebda",
+      "name": "Mensaje actual"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "CONFIGURE_SESSION_TABLE_ID"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "Telefono",
+              "keyValue": "={{ $json.phone }}"
+            },
+            {
+              "keyName": "Telefono",
+              "keyValue": "={{ $json.phone.startsWith('whatsapp:+521') && $json.phone.length === 23 ? $json.phone.replace(/^whatsapp:\\+521/, 'whatsapp:+52') : ($json.phone.startsWith('whatsapp:+52') && $json.phone.length === 22 ? $json.phone.replace(/^whatsapp:\\+52/, 'whatsapp:+521') : $json.phone) }}"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1088,
+        864
+      ],
+      "id": "88b226a3-a1f6-4908-af20-8f40c01d1aa0",
+      "name": "Leer sesion",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{json: {message: $('Mensaje actual').first(0, $runIndex).json, rows: $input.all().map(item => item.json)}, pairedItem: {item: 0}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1312,
+        864
+      ],
+      "id": "248bcb22-26af-45b7-b2c9-780ba11cd602",
+      "name": "Agrupar sesion"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "CONFIGURE_REQUEST_TABLE_ID"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "Intencion",
+              "condition": "neq",
+              "keyValue": "_sesion"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "id": "153fa612-2514-4145-8b0a-5381630c4c9a",
+      "name": "Leer solicitudes",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1520,
+        864
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Motor conversacional por reglas con estado persistente.\nfunction normalizeText(value) {\n  return String(value ?? '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase().trim();\n}\n\nfunction canonicalPhone(phone) {\n  return String(phone || '').replace(/^whatsapp:/, '').replace(/^\\+521(\\d{10})$/, '+52$1');\n}\n\nfunction conversation(input, rows = [], config = {}, now = new Date().toISOString()) {\n  const message = normalizeText(input.text);\n  const parse = value => { try { return JSON.parse(value); } catch { return null; } };\n  const ownRows = rows.filter(r => canonicalPhone(r.Telefono) === canonicalPhone(input.phone));\n  const saved = ownRows.filter(r => r.Intencion === '_sesion')\n    .sort((a, b) => String(b.Fecha).localeCompare(String(a.Fecha)))[0];\n  let session = parse(saved?.Mensaje);\n  if (!session || typeof session !== 'object' || session.version !== 2) {\n    session = { version: 2, intent: '', stage: 'inicio', data: {}, seen: [] };\n  }\n  session = JSON.parse(JSON.stringify(session));\n  session.seen = Array.isArray(session.seen) ? session.seen : [];\n  let reply = '', request = null, notifications = [];\n  const finish = () => {\n    session.updatedAt = now;\n    if (input.eventId && !session.seen.includes(input.eventId)) {\n      session.seen = [...session.seen, input.eventId].slice(-80);\n    }\n    session.lastReply = reply;\n    return {\n      phone: input.phone, customerName: session.data?.nombre || input.profileName || 'Cliente',\n      intent: session.intent || 'general', reply,\n      sessionJson: JSON.stringify(session), processedAt: now,\n      saveRequest: !!request, requiresHuman: !!request, request,\n      requestKey: request ? `${request.tipo}:${request.id}` : '',\n      requestJson: request ? JSON.stringify(request) : '',\n      requestPhone: request?.telefono || input.phone,\n      requestCustomerName: request?.datos?.nombre || session.data?.nombre || input.profileName || 'Cliente',\n      requestState: request?.estado || 'Pendiente',\n      notifications,\n    };\n  };\n  if (!input.valid) { reply = input.ignoredReply || ''; return finish(); }\n  if (input.eventId && session.seen.includes(input.eventId)) {\n    // Acknowledge Meta retries without re-creating a request or sending a second reply.\n    const result = finish(); result.reply = ''; result.notifications = []; result.sessionJson = JSON.stringify(session); return result;\n  }\n  if (input.fallbackReply) { reply = input.fallbackReply; return finish(); }\n  if (input.managerCommand) {\n    const result = managerConversation(input, rows, config, now);\n    const managerSession = JSON.parse(result.sessionJson);\n    managerSession.seen = [...new Set([...session.seen, input.eventId].filter(Boolean))].slice(-80);\n    managerSession.lastReply = result.reply;\n    result.sessionJson = JSON.stringify(managerSession);\n    return result;\n  }\n  if (session.updatedAt && Date.parse(now) - Date.parse(session.updatedAt) > 24 * 3600 * 1000) {\n    session = { version: 2, intent: '', stage: 'inicio', data: {}, seen: session.seen };\n  }\n  const menu = `Soy el asistente de ${config.businessName || 'nuestro negocio'}. ¿En qué puedo ayudarte?\\n` +\n    '1. Menú\\n2. Horarios\\n3. Ubicación\\n4. Pedido para recoger\\n5. Reservación\\n6. Evento o cotización\\n7. Facturación\\n' +\n    'También puedes escribir estado, reiniciar o asesor.';\n  const hours = config.hours || 'Consulta el horario con el encargado.';\n  const navigationNumber = session.stage !== 'datos' || !session.awaiting;\n  const start = intent => {\n    session.intent = intent; session.stage = 'datos'; session.data = {};\n    session.startedAt = now; session.awaiting = '';\n  };\n  if (/^(reiniciar|cancelar|salir|inicio)$/.test(message)) {\n    const submitted = session.stage === 'pendiente';\n    start('');\n    reply = (submitted ? 'Reinicié la conversación. Esto NO cancela una solicitud ya enviada; escribe asesor para pedir su cancelación.\\n\\n' :\n      'Listo, dejamos esta captura sin enviar.\\n\\n') + menu;\n    return finish();\n  }\n  if (/^(estado|estatus|seguimiento)(\\s.*)?$/.test(message)) {\n    const latest = ownRows.filter(r => r.Intencion !== '_sesion' && parse(r.Mensaje)?.folio)\n      .sort((a, b) => String(b.Fecha).localeCompare(String(a.Fecha)))[0];\n    if (latest) {\n      const detail = parse(latest.Mensaje);\n      const status = ['Pendiente', 'Confirmado', 'Rechazado', 'Cancelado'].includes(latest.Estado) ? latest.Estado : 'Pendiente';\n      reply = `Solicitud ${detail.folio}: ${status}.` +\n        (status === 'Pendiente' ? ' Aún requiere revisión del encargado; no está confirmada.' : '') +\n        ' Para aclaraciones escribe asesor.';\n    } else reply = 'No encuentro una solicitud enviada para este número. Escribe pedido, reservación, evento o facturación para comenzar.';\n    return finish();\n  }\n  const section = Object.keys(config.menuSections || {}).find(key => message === key || message === 'menu ' + key || message === 'precios ' + key);\n  if (config.menuSections && /\\b(cuanto|cuestan|precio|precios|costo|costos)\\b/.test(message) && !/^(precios?)$/.test(message) && !section) {\n    const terms = message.replace(/\\b(kilo|kilos|kilogramo|kilogramos)\\b/g, 'kg').split(/\\W+/)\n      .filter(word => (word.length > 2 || word === 'kg') && !['cuanto','cuesta','cuestan','precio','precios','costo','costos','tiene','tienen','del','las','los','una','uno','por','que','vale','cuanto','quiero','saber','favor'].includes(word));\n    const lines = Object.values(config.menuSections).flatMap(value => value.split('\\n')).filter(line => line.includes('$'));\n    const matches = lines.filter(line => terms.length && terms.every(term => normalizeText(line).includes(term)));\n    reply = matches.length ? matches.join('\\n') + '\\nPrecios en MXN del menú configurado. Disponibilidad y total por confirmar con el encargado.' :\n      'No encontré ese producto exacto en el menú cargado. Escribe menú para ver las opciones o asesor para consultarlo.';\n    return finish();\n  }\n  if (/^(menu|carta|precios?|menu completo)$/.test(message) || (navigationNumber && message === '1') || section) {\n    reply = config.menuSections ? (section ? config.menuSections[section] : Object.values(config.menuSections).join('\\n\\n')) +\n      '\\n\\nPrecios en MXN según el menú configurado proporcionado por el restaurante. Disponibilidad y total se confirman con el encargado. Escribe pedido para solicitar comida para recoger.' :\n      config.menuUrl ? 'Consulta nuestro menú actualizado: ' + config.menuUrl :\n      'Todavía no tengo cargados los precios ni el enlace oficial del menú. Escribe asesor para solicitar esa información.';\n    if (session.awaiting && session.stage === 'datos') reply += '\\nTu captura sigue guardada. ' + question(session.awaiting);\n    return finish();\n  }\n  if (/\\b(horario|abren|cierran)\\b/.test(message) || (navigationNumber && message === '2')) {\n    reply = hours + ' La disponibilidad se confirma con el encargado.';\n    return finish();\n  }\n  if (/\\b(ubicacion|direccion|como llego|maps)\\b/.test(message) || (navigationNumber && message === '3')) {\n    reply = config.mapsUrl ? [config.address, config.mapsUrl].filter(Boolean).join('\\n') :\n      'Todavía no tengo la dirección y el enlace oficial de Maps cargados. Escribe asesor para solicitar la ubicación exacta.';\n    return finish();\n  }\n  let newIntent = '';\n  if (/^(asesor|encargado|humano|ayuda humana)$/.test(message)) newIntent = 'asesor';\n  else if (/\\b(factur[a-z]*|constancia fiscal|rfc)\\b/.test(message) || message === '7') newIntent = 'facturacion';\n  else if (/\\b(evento|fiesta|rentar|cotizacion|servicio completo|servicio parcial)\\b/.test(message) || message === '6') newIntent = 'evento';\n  else if (/\\b(reserv[a-z]*|mesa)\\b/.test(message) || message === '5') newIntent = 'reservacion';\n  else if (/\\b(pedido|ordenar)\\b/.test(message) || message === '4' ||\n    (!session.intent && /\\b(kilo|kg|producto|comida|bebida)\\b/.test(message))) newIntent = 'pedido';\n  // A numbered answer during a capture is data, not a navigation command.\n  if (/^[1-7]$/.test(message) && session.stage === 'datos' && session.awaiting) newIntent = '';\n  if (newIntent && (newIntent !== session.intent || session.stage === 'pendiente' || session.stage === 'inicio')) start(newIntent);\n  if (!session.intent) { reply = menu; return finish(); }\n  if (session.stage === 'pendiente') {\n    reply = `Tu solicitud ${session.lastFolio || ''} ya está registrada para revisión. Escribe estado para consultarla o reiniciar para iniciar otra.`;\n    return finish();\n  }\n  if (session.stage === 'confirmar' && /^(si|confirmo|confirmar|enviar|correcto|de acuerdo)$/.test(message)) {\n    const id = input.eventId || `${input.phone.replace(/\\D/g, '')}-${Date.parse(session.startedAt)}`;\n    const folio = 'REQ-' + id.replace(/[^a-z0-9-]/gi, '').toUpperCase();\n    request = {\n      version: 2, id, folio, tipo: session.intent, telefono: input.phone,\n      datos: session.data, estado: 'Pendiente', requiereIntervencionHumana: true,\n      createdAt: now, avisoEncargado: config.notificationsEnabled ? 'preparado_para_Meta_entrega_no_verificada' : 'pendiente_de_configurar',\n      adjuntos: 'IDs de medios de Meta; descarga privada y revisión pendientes',\n    };\n    session.stage = 'pendiente'; session.lastFolio = folio; session.awaiting = '';\n    reply = `Solicitud ${folio} registrada como PENDIENTE en la bandeja del restaurante. No es una confirmación de disponibilidad, reservación ni precio. Escribe estado para consultar el seguimiento.`;\n    if (config.notificationsEnabled && config.managerPhone) {\n      notifications.push({ to: config.managerPhone, body:\n        `NEGOCIO DE EJEMPLO\\nNueva solicitud PENDIENTE\\nFolio: ${folio}\\nCliente: ${session.data.nombre}\\nWhatsApp: ${input.phone.replace('whatsapp:', '')}\\n` +\n        summary({ ...session, data: Object.fromEntries(Object.entries(session.data).filter(([k]) => !['rfc', 'correo', 'archivos'].includes(k))) }) +\n        (session.data.archivos?.length ? `\\nDocumentos fiscales: ${session.data.archivos.length} referencia(s) en n8n; revisar allí, no se descargaron automáticamente.` : '') +\n        `\\n\\nPara decidir, responde:\\naprobar ${folio}\\no\\nrechazar ${folio} motivo\\n\\nLa entrega de este aviso depende de la sesión activa de WhatsApp.` });\n    }\n    return finish();\n  }\n  if (session.stage === 'confirmar') {\n    if (/^(no|corregir|cambiar)$/.test(message)) {\n      start(session.intent); reply = 'Vamos a capturar los datos otra vez. ' + question('nombre');\n      session.awaiting = 'nombre'; return finish();\n    }\n    reply = summary(session) + '\\n¿Los datos son correctos? Responde sí para enviar, corregir para empezar de nuevo o cancelar.';\n    return finish();\n  }\n  const d = session.data;\n  const explicitName = input.text.match(/(?:me llamo|mi nombre es|a nombre de|soy)\\s+([A-Za-zÁÉÍÓÚÜÑáéíóúüñ ]{2,60})(?=[,;.]|$)/i);\n  const firstPart = input.text.split(/[,;\\n]/)[0].trim();\n  const possibleName = /^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ ]{2,60}$/.test(firstPart) &&\n    !/\\b(hola|buenos|buenas|quiero|pedido|reserv|mesa|domingo|sabado|lunes|martes|miercoles|jueves|viernes|hoy|manana|factura|evento|asesor|efectivo|tarjeta|transferencia|comida|bebida|kilo|sin preferencia)\\b/.test(normalizeText(firstPart));\n  if (explicitName) d.nombre = explicitName[1].trim();\n  else if ((!d.nombre && (session.awaiting === 'nombre' || input.text.includes(','))) && possibleName) d.nombre = firstPart;\n\n  const dateResult = extractDate(message, now);\n  if (dateResult) d.fecha = dateResult;\n  const timeResult = extractTime(message, session.awaiting === 'hora');\n  if (timeResult) d.hora = timeResult;\n  const people = message.match(/\\b(\\d{1,3})\\s*(personas?|comensales?|adultos?)\\b/) ||\n    (session.awaiting === 'personas' ? message.match(/^(\\d{1,3})$/) : null);\n  if (people && +people[1] > 0 && +people[1] <= 300) d.personas = +people[1];\n  const zone = message.match(/\\b(interior|exterior|sin preferencia)\\b/);\n  if (zone) d.zona = zone[1];\n  const pay = message.match(/\\b(efectivo|transferencia|tarjeta)\\b/);\n  if (pay) d.pago = pay[1];\n  if (session.intent === 'pedido') {\n    const quantity = /\\b(\\d+(?:[.,]\\d+)?|un|uno|una|medio|media|dos|tres|cuatro|cinco|seis|diez)\\s*(kg|kilos?|litros?|tacos?|porciones?|ordenes?|bebidas?)\\b/.test(message);\n    // Durante la captura se acepta texto libre con cantidad.\n    const product = input.text.trim().length >= 3;\n    if (quantity && product) d.producto = input.text.split(/[,;\\n]/).find(p => /\\b(producto|comida|bebida|taco)/.test(normalizeText(p)))?.trim() || input.text;\n    if (session.awaiting === 'producto' && quantity) d.producto = input.text;\n  }\n  if (session.intent === 'evento' && session.awaiting === 'servicio' && !newIntent && input.text.length >= 5) d.servicio = input.text;\n  if (session.intent === 'asesor' && session.awaiting === 'motivo' && !newIntent && input.text.length >= 3) d.motivo = input.text;\n  if (session.intent === 'facturacion') {\n    const email = input.text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/i);\n    if (email) d.correo = email[0];\n    const rfc = input.text.toUpperCase().match(/\\b[A-ZÑ&]{3,4}\\d{6}[A-Z0-9]{3}\\b/);\n    if (rfc) d.rfc = rfc[0];\n    if (input.media.length) {\n      const accepted = input.media.filter(m => /^(image\\/(jpeg|png|webp)|application\\/pdf)$/.test(m.contentType));\n      const existing = d.archivos || [];\n      d.archivos = [...existing, ...accepted.filter(m => !existing.some(e => (e.id || e.url) === (m.id || m.url)))].slice(0, 10);\n      if (!accepted.length) {\n        reply = 'Para facturación envía archivos PDF o imágenes JPG/PNG. No puedo leer audios ni verificar documentos automáticamente.';\n        return finish();\n      }\n    }\n    if (session.awaiting === 'documentos' && (/^(listo|ya envie|ya envie todo|terminado)$/.test(message)) && d.archivos?.length) d.documentosListos = true;\n  } else if (input.media.length && !input.text) {\n    reply = 'Recibí un archivo, pero para esta solicitud necesito los datos por escrito. ' + question(session.awaiting || 'nombre');\n    return finish();\n  }\n  const required = {\n    pedido: ['nombre', 'producto', 'fecha', 'hora', 'pago'],\n    reservacion: ['nombre', 'fecha', 'hora', 'personas', 'zona'],\n    evento: ['nombre', 'fecha', 'personas', 'servicio'],\n    facturacion: ['nombre', 'correo', 'rfc', 'documentos'],\n    asesor: ['nombre', 'motivo'],\n  }[session.intent];\n  const missing = required.find(key => key === 'documentos' ? !d.documentosListos : !d[key]);\n  if (missing) {\n    session.awaiting = missing;\n    reply = (d.nombre ? '' : 'Con gusto. ') + question(missing);\n    if (missing === 'documentos' && d.archivos?.length) reply = `Tengo ${d.archivos.length} referencia(s) de archivo de WhatsApp. ` +\n      'Envía la constancia fiscal y el ticket que falten. Al terminar escribe listo; el encargado debe abrirlos y verificar que sean correctos.';\n  } else {\n    session.stage = 'confirmar'; session.awaiting = '';\n    reply = summary(session) + '\\n¿Los datos son correctos? Responde sí para enviar, corregir para empezar de nuevo o cancelar.';\n  }\n  return finish();\n}\n\nfunction managerConversation(input, rows, config, now) {\n  const parse = value => { try { return JSON.parse(value); } catch { return null; } };\n  let reply = '', request = null, notifications = [];\n  const requests = rows.filter(r => r.Intencion !== '_sesion').map(row => ({ row, value: parse(row.Mensaje) }))\n    .filter(x => x.value?.folio && x.value?.telefono && /^whatsapp:\\+\\d{7,15}$/.test(x.value.telefono));\n  if (!input.isManager || canonicalPhone(input.phone) !== canonicalPhone(config.managerPhone)) {\n    reply = 'Este comando solo está disponible para el encargado autorizado.';\n  } else if (/^(panel|encargado|pendientes)$/i.test(input.text.trim())) {\n    const pending = requests.filter(x => x.row.Estado === 'Pendiente').sort((a, b) => String(b.row.Fecha).localeCompare(String(a.row.Fecha)));\n    reply = 'PANEL DEL ENCARGADO\\n' + (pending.length ? `Solicitudes pendientes: ${pending.length}\\n` + pending.slice(0, 10).map(x =>\n      `${x.value.folio}\\n${x.value.tipo} | ${x.value.datos.nombre} | ${x.value.datos.fecha || 'sin fecha'} ${x.value.datos.hora || ''}`\n    ).join('\\n\\n') : 'No hay solicitudes pendientes.') +\n      '\\n\\nComandos:\\naprobar FOLIO\\nrechazar FOLIO motivo\\npendientes\\n\\nLa aprobación confirma los datos capturados. No cobra ni emite facturas. Las notificaciones por WhatsApp requieren ventanas de atención abiertas.';\n  } else {\n    const match = input.text.trim().match(/^(aprobar|rechazar)\\s+(REQ-[A-Z0-9-]+)(?:\\s+([\\s\\S]+))?$/i);\n    const found = match && requests.find(x => x.value.folio.toUpperCase() === match[2].toUpperCase());\n    if (!match) reply = 'Usa aprobar FOLIO o rechazar FOLIO motivo. Escribe pendientes para ver los folios.';\n    else if (!found) reply = 'No encontré ese folio. Escribe pendientes y copia el folio completo.';\n    else if (found.row.Estado !== 'Pendiente') reply = `La solicitud ${found.value.folio} ya está en estado ${found.row.Estado}. No la cambié ni repetí la notificación.`;\n    else if (match[1].toLowerCase() === 'rechazar' && !match[3]) reply = 'Incluye el motivo: rechazar FOLIO motivo. El motivo se compartirá con el cliente.';\n    else {\n      const state = match[1].toLowerCase() === 'aprobar' ? 'Confirmado' : 'Rechazado';\n      const reason = (match[3] || '').trim().slice(0, 500);\n      request = { ...found.value, estado: state, decidedAt: now, decidedBy: config.managerDisplayPhone,\n        decisionMessageId: input.eventId, motivo: reason, requiereIntervencionHumana: false,\n        avisoCliente: config.notificationsEnabled ? 'preparado_para_Meta_entrega_no_verificada' : 'pendiente_de_configurar' };\n      reply = `Solicitud ${request.folio}: ${state}. Se guardó la decisión.` +\n        (config.notificationsEnabled ? ' El aviso al cliente se intentará por WhatsApp; su entrega aún no está verificada.' : ' El envío automático al cliente no está configurado.');\n      if (config.notificationsEnabled) notifications.push({\n        to: request.telefono,\n        body: `${config.businessName || 'Nuestro negocio'}\\nTu solicitud ${request.folio} (${request.tipo}) fue ${state === 'Confirmado' ? 'CONFIRMADA' : 'RECHAZADA'} por el encargado.` +\n          (state === 'Confirmado' ? '\\n' + summary({ intent: request.tipo, data: request.datos }).replace(/\\nSujeta a revisión del encargado\\.$/, '') : '') +\n          (reason ? '\\nMotivo: ' + reason : '') +\n          (request.tipo === 'facturacion' ? '\\nEsta es una confirmación de recepción de la solicitud; no significa que la factura esté emitida.' : '') +\n          '\\nPara aclaraciones escribe asesor.',\n      });\n    }\n  }\n  return {\n    phone: input.phone, customerName: 'Encargado', intent: 'administracion', reply,\n    sessionJson: JSON.stringify({\n      version: 2, intent: '', stage: 'inicio', data: {}, seen: [input.eventId].filter(Boolean), updatedAt: now,\n    }), processedAt: now, saveRequest: !!request, requiresHuman: false,\n    request, requestKey: request ? `${request.tipo}:${request.id}` : '', requestJson: request ? JSON.stringify(request) : '',\n    requestPhone: request?.telefono || input.phone, requestCustomerName: request?.datos?.nombre || 'Encargado',\n    requestState: request?.estado || '', notifications,\n  };\n}\n\nfunction question(key) {\n  return {\n    nombre: '¿A nombre de quién registramos la solicitud?',\n    producto: '¿Qué producto y cantidad deseas? Por ejemplo: 2 porciones de comida.',\n    fecha: '¿Para qué fecha? Puedes escribir 27/09/2026, mañana o el día de la semana.',\n    hora: '¿A qué hora? Usa formato de 24 horas, por ejemplo 10:00 o 14:00.',\n    personas: '¿Para cuántas personas? Envía un número entre 1 y 300.',\n    zona: '¿Qué zona prefieres? Puedes escribir interior, exterior o sin preferencia. Sujeta a disponibilidad.',\n    pago: '¿Qué forma de pago prefieres: efectivo, transferencia o tarjeta? No envíes datos de tu tarjeta.',\n    servicio: 'Describe el servicio para el evento: comida, renta del lugar u otro.',\n    correo: '¿A qué correo deseas recibir la factura?',\n    rfc: 'Escribe tu RFC, por favor.',\n    documentos: 'Envía la constancia de situación fiscal y el ticket en PDF o imagen. Cuando hayas enviado ambos escribe listo. Solo registraré las referencias; un encargado debe revisar los archivos.',\n    motivo: '¿Qué necesitas que revise el encargado?',\n  }[key] || 'Cuéntame qué necesitas.';\n}\n\nfunction extractDate(text, now) {\n  text = normalizeText(text);\n  const local = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(now));\n  const today = new Date(local + 'T12:00:00Z');\n  const iso = d => d.toISOString().slice(0, 10);\n  let match = text.match(/\\b(\\d{4})-(\\d{2})-(\\d{2})\\b/);\n  let candidate = match ? `${match[1]}-${match[2]}-${match[3]}` : '';\n  if (!candidate) {\n    match = text.match(/\\b(\\d{1,2})\\/(\\d{1,2})(?:\\/(\\d{4}))?\\b/);\n    if (match) candidate = `${match[3] || local.slice(0, 4)}-${match[2].padStart(2, '0')}-${match[1].padStart(2, '0')}`;\n  }\n  if (candidate) {\n    const date = new Date(candidate + 'T12:00:00Z');\n    return Number.isFinite(+date) && iso(date) === candidate && candidate >= local ? candidate : '';\n  }\n  if (/\\bpasado manana\\b/.test(text)) { today.setUTCDate(today.getUTCDate() + 2); return iso(today); }\n  if (/\\bmanana\\b/.test(text.replace(/\\bde la manana\\b/g, ''))) { today.setUTCDate(today.getUTCDate() + 1); return iso(today); }\n  if (/\\bhoy\\b/.test(text)) return iso(today);\n  const days = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];\n  const index = days.findIndex(day => new RegExp('\\\\b' + day + '\\\\b').test(text));\n  if (index >= 0) {\n    let delta = (index - today.getUTCDay() + 7) % 7;\n    if (!delta && /\\b(proximo|siguiente)\\b/.test(text)) delta = 7;\n    today.setUTCDate(today.getUTCDate() + delta);\n    return iso(today);\n  }\n  return '';\n}\n\nfunction extractTime(text, isAnswer) {\n  text = normalizeText(text);\n  let m = text.match(/\\b(?:a las?\\s+)(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm|a\\.m\\.|p\\.m\\.)?\\b/) ||\n    text.match(/\\b(\\d{1,2}):(\\d{2})\\s*(am|pm)?\\b/) ||\n    text.match(/\\b(\\d{1,2})\\s*(am|pm)\\b/);\n  if (m && /^(am|pm)$/.test(m[2] || '')) m = [m[0], m[1], '00', m[2]];\n  if (!m && isAnswer) m = text.match(/^(\\d{1,2})$/);\n  if (!m) return '';\n  let h = +m[1], min = +(m[2] || 0);\n  const suffix = (m[3] || '').replace(/\\./g, '');\n  if (min > 59 || h > 23 || (suffix && (h < 1 || h > 12))) return '';\n  if (suffix) h = h % 12 + (suffix === 'pm' ? 12 : 0);\n  // Bare 1..7 is ambiguous for a daytime restaurant; ask for 24-hour time.\n  if (!suffix && h > 0 && h < 8) return '';\n  return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;\n}\n\nfunction summary(session) {\n  const labels = { nombre: 'Nombre', producto: 'Producto y cantidad', fecha: 'Fecha', hora: 'Hora',\n    personas: 'Personas', zona: 'Zona solicitada', pago: 'Pago preferido', servicio: 'Servicio',\n    correo: 'Correo', rfc: 'RFC', motivo: 'Motivo' };\n  return `Revisa tu solicitud de ${session.intent}:\\n` +\n    Object.entries(labels).filter(([k]) => session.data[k]).map(([k, label]) => `${label}: ${session.data[k]}`).join('\\n') +\n    (session.data.archivos?.length ? `\\nReferencias de archivos: ${session.data.archivos.length} (pendientes de revisión y descarga)` : '') +\n    (session.intent === 'pedido' ? '\\nModalidad: recoger en restaurante. Precio y disponibilidad por confirmar.' : '') +\n    '\\nSujeta a revisión del encargado.';\n}\n\nconst config = {\"businessName\": \"Negocio de ejemplo\", \"hours\": \"Configura el horario de atención.\", \"hoursConfirmed\": false, \"address\": \"\", \"mapsUrl\": \"\", \"menuUrl\": \"\", \"managerPhone\": \"\", \"managerDisplayPhone\": \"\", \"notificationsEnabled\": false, \"menuSource\": \"Configuración de ejemplo sin catálogo comercial.\", \"menuSections\": null};\n\nconst bundle = $('Agrupar sesion').first(0, $runIndex).json;\nconfig.managerPhone = bundle.message.managerPhone;\nconfig.managerDisplayPhone = bundle.message.managerPhone.replace('whatsapp:', '');\nconfig.notificationsEnabled = !!bundle.message.managerPhone;\nconst rows = [...bundle.rows, ...$input.all().map(item => item.json)].filter(row => row.Telefono);\nreturn [{json: conversation(bundle.message, rows, config), pairedItem: {item: 0}}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1744,
+        864
+      ],
+      "id": "79500260-c165-4288-b49b-855ca7761495",
+      "name": "Procesar conversacion"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "7bc3b4a9-12a2-4c31-a4fd-75f88368e10c",
+              "leftValue": "={{ $json.saveRequest }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1968,
+        864
+      ],
+      "id": "dd5feb12-6f71-42a0-963d-bba13391b77c",
+      "name": "Hay solicitud para guardar"
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "CONFIGURE_REQUEST_TABLE_ID"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "Telefono",
+              "keyValue": "={{ $('Procesar conversacion').item.json.requestPhone }}"
+            },
+            {
+              "keyName": "Intencion",
+              "keyValue": "={{ $('Procesar conversacion').item.json.requestKey }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Telefono": "={{ $('Procesar conversacion').item.json.requestPhone }}",
+            "Cliente": "={{ $('Procesar conversacion').item.json.requestCustomerName }}",
+            "Intencion": "={{ $('Procesar conversacion').item.json.requestKey }}",
+            "Mensaje": "={{ $('Procesar conversacion').item.json.requestJson }}",
+            "Respuesta": "={{ $('Procesar conversacion').item.json.reply }}",
+            "Fecha": "={{ $('Procesar conversacion').item.json.processedAt }}",
+            "Estado": "={{ $('Procesar conversacion').item.json.requestState }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Telefono",
+              "displayName": "Telefono",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Cliente",
+              "displayName": "Cliente",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Intencion",
+              "displayName": "Intencion",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Mensaje",
+              "displayName": "Mensaje",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Respuesta",
+              "displayName": "Respuesta",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Fecha",
+              "displayName": "Fecha",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Estado",
+              "displayName": "Estado",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false,
+          "column": [
+            {
+              "name": "Telefono"
+            },
+            {
+              "name": "Cliente"
+            },
+            {
+              "name": "Intencion"
+            },
+            {
+              "name": "Mensaje"
+            },
+            {
+              "name": "Respuesta"
+            },
+            {
+              "name": "Fecha"
+            },
+            {
+              "name": "Estado"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2192,
+        736
+      ],
+      "id": "2ef70b90-241b-4c49-84b2-a819ec1ff54c",
+      "name": "Guardar solicitud"
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "CONFIGURE_SESSION_TABLE_ID"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "Telefono",
+              "keyValue": "={{ $('Procesar conversacion').item.json.phone }}"
+            },
+            {
+              "keyName": "Intencion",
+              "keyValue": "_sesion"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Telefono": "={{ $('Procesar conversacion').item.json.phone }}",
+            "Cliente": "={{ $('Procesar conversacion').item.json.customerName }}",
+            "Intencion": "_sesion",
+            "Mensaje": "={{ $('Procesar conversacion').item.json.sessionJson }}",
+            "Respuesta": "={{ $('Procesar conversacion').item.json.reply }}",
+            "Fecha": "={{ $('Procesar conversacion').item.json.processedAt }}",
+            "Estado": "Sesion"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Telefono",
+              "displayName": "Telefono",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Cliente",
+              "displayName": "Cliente",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Intencion",
+              "displayName": "Intencion",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Mensaje",
+              "displayName": "Mensaje",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Respuesta",
+              "displayName": "Respuesta",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Fecha",
+              "displayName": "Fecha",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Estado",
+              "displayName": "Estado",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false,
+          "column": [
+            {
+              "name": "Telefono"
+            },
+            {
+              "name": "Cliente"
+            },
+            {
+              "name": "Intencion"
+            },
+            {
+              "name": "Mensaje"
+            },
+            {
+              "name": "Respuesta"
+            },
+            {
+              "name": "Fecha"
+            },
+            {
+              "name": "Estado"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "54e647bc-60d3-49ff-b3e7-3d41714d6e6e",
+      "name": "Guardar sesion",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2400,
+        896
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Una ejecución de este nodo por mensaje entrante, incluso cuando no hay respuesta.\nconst result = $('Procesar conversacion').first(0, $runIndex).json;\nconst input = $('Mensaje actual').first(0, $runIndex).json;\nconst phoneDigits = v => String(v ?? '').replace(/^whatsapp:/i, '').replace(/\\D/g, '');\nfunction splitText(value, max = 3500) {\n  let rest = String(value ?? '').trim();\n  const parts = [];\n  while (rest.length > max) {\n    let cut = rest.lastIndexOf('\\n', max);\n    if (cut < max / 2) cut = rest.lastIndexOf(' ', max);\n    if (cut < max / 2) cut = max;\n    if (/[\\uD800-\\uDBFF]/.test(rest.charAt(cut - 1))) cut--;\n    parts.push(rest.slice(0, cut).trim());\n    rest = rest.slice(cut).trim();\n  }\n  if (rest) parts.push(rest);\n  return parts;\n}\nconst messages = [\n  {to: input.metaRecipient, body: result.reply, purpose: 'respuesta'},\n  ...(result.notifications ?? []).map(n => ({to: phoneDigits(n.to), body: n.body, purpose: 'aviso'})),\n];\nconst items = [];\nfor (const message of messages) {\n  if (!String(message.body ?? '').trim()) continue;\n  if (!/^[1-9]\\d{6,14}$/.test(message.to)) throw new Error('Destinatario inválido en la respuesta o aviso. Revisa el número del encargado.');\n  if (phoneDigits(message.to).replace(/^521(\\d{10})$/, '52$1') === input.businessPhone) throw new Error('Se bloqueó un intento de enviar un aviso al mismo número del restaurante. Configura otro WhatsApp para el encargado.');\n  for (const part of splitText(message.body)) {\n    items.push({json: {\n      skipSend: false, phoneNumberId: input.phoneNumberId,\n      to: message.to, text: part, purpose: message.purpose,\n      inboundMessageId: input.eventId,\n    }, pairedItem: {item: 0}});\n  }\n}\nreturn items.length ? items : [{json: {skipSend: true}, pairedItem: {item: 0}}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2624,
+        896
+      ],
+      "id": "e65bf56f-75aa-4dfd-9712-cc5a7087fa4a",
+      "name": "Preparar respuestas Meta"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "5dc1c7ab-12fc-457f-84bf-f7acb040eba5",
+              "leftValue": "={{ !$json.skipSend }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2848,
+        896
+      ],
+      "id": "af7c6077-e4a8-4e07-8dcb-a3f5b68ed19d",
+      "name": "Hay mensaje para enviar"
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "phoneNumberId": "={{ $json.phoneNumberId }}",
+        "recipientPhoneNumber": "={{ $json.to }}",
+        "textBody": "={{ $json.text }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [
+        3072,
+        816
+      ],
+      "id": "f7c11052-ba73-4e3c-82cc-955ea5285e11",
+      "name": "Enviar por Meta",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nfor (const item of items) {\n  if (item.json.error || !item.json.messages?.[0]?.id) throw new Error('Meta no devolvió un ID de mensaje aceptado. Revisa la salida de Enviar por Meta.');\n}\nreturn items;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3280,
+        816
+      ],
+      "id": "9cab94f7-fb78-410a-915a-0e94b858e630",
+      "name": "Comprobar aceptacion de Meta"
+    },
+    {
+      "parameters": {
+        "errorMessage": "={{ 'Meta no aceptó uno de los envíos. Revisa Enviar por Meta en esta ejecución. ' + ($json.error?.message || $json.message || 'Verifica credenciales, número y ventana de atención de 24 horas.') }}"
+      },
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        3280,
+        1040
+      ],
+      "id": "770e432a-18de-4e50-813c-f89677f62b63",
+      "name": "Error al enviar por Meta"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        3072,
+        1216
+      ],
+      "id": "01f7484f-9b3e-401a-b64b-d57cc5278555",
+      "name": "Continuar siguiente mensaje"
+    },
+    {
+      "parameters": {
+        "content": "## Configuración requerida\nAsigna credenciales de Meta al trigger y al envío. Completa businessPhone y, opcionalmente, managerPhone en Configurar Meta. Selecciona tus tablas de sesiones y solicitudes. Personaliza config en Procesar conversacion. Consulta README.md.\n\nPlantilla inactiva: verificar con mensajes reales antes de activar. No incluye un LLM ni descarga automática de documentos.",
+        "height": 610,
+        "width": 830,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "d7960847-5d8e-4e22-ae58-d7f2d8c8e0d4",
+      "name": "Pasos para conectar Meta"
+    },
+    {
+      "parameters": {
+        "content": "## Configuración requerida\nAsigna credenciales de Meta al trigger y al envío. Completa businessPhone y, opcionalmente, managerPhone en Configurar Meta. Selecciona tus tablas de sesiones y solicitudes. Personaliza config en Procesar conversacion. Consulta README.md.\n\nPlantilla inactiva: verificar con mensajes reales antes de activar. No incluye un LLM ni descarga automática de documentos.",
+        "height": 610,
+        "width": 830,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        928,
+        0
+      ],
+      "id": "82495d90-1f94-424c-b149-6ba9e6263a92",
+      "name": "Pruebas y alcance"
+    }
+  ],
+  "connections": {
+    "Recibir WhatsApp Meta": {
+      "main": [
+        [
+          {
+            "node": "Configurar Meta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Configurar Meta": {
+      "main": [
+        [
+          {
+            "node": "Normalizar Meta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalizar Meta": {
+      "main": [
+        [
+          {
+            "node": "Procesar uno por uno",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mensaje actual": {
+      "main": [
+        [
+          {
+            "node": "Leer sesion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer sesion": {
+      "main": [
+        [
+          {
+            "node": "Agrupar sesion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agrupar sesion": {
+      "main": [
+        [
+          {
+            "node": "Leer solicitudes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer solicitudes": {
+      "main": [
+        [
+          {
+            "node": "Procesar conversacion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Procesar conversacion": {
+      "main": [
+        [
+          {
+            "node": "Hay solicitud para guardar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hay solicitud para guardar": {
+      "main": [
+        [
+          {
+            "node": "Guardar solicitud",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Guardar sesion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guardar solicitud": {
+      "main": [
+        [
+          {
+            "node": "Guardar sesion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guardar sesion": {
+      "main": [
+        [
+          {
+            "node": "Preparar respuestas Meta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar respuestas Meta": {
+      "main": [
+        [
+          {
+            "node": "Hay mensaje para enviar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hay mensaje para enviar": {
+      "main": [
+        [
+          {
+            "node": "Enviar por Meta",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Continuar siguiente mensaje",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar por Meta": {
+      "main": [
+        [
+          {
+            "node": "Comprobar aceptacion de Meta",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error al enviar por Meta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Comprobar aceptacion de Meta": {
+      "main": [
+        [
+          {
+            "node": "Procesar uno por uno",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Continuar siguiente mensaje": {
+      "main": [
+        [
+          {
+            "node": "Procesar uno por uno",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Procesar uno por uno": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Mensaje actual",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "name": "WhatsApp Service Agent | n8n + Meta",
+  "active": false,
+  "pinData": {}
+}
