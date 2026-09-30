@@ -1,0 +1,878 @@
+{
+  "name": "WhatsApp Business Agent - Plantilla configurable",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "messages"
+        ],
+        "options": {
+          "messageStatusUpdates": [
+            "failed"
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.whatsAppTrigger",
+      "typeVersion": 1,
+      "position": [
+        -16,
+        784
+      ],
+      "id": "8a0aff25-c9c2-5e8a-92c5-8c91f17e33af",
+      "name": "Recibir WhatsApp Meta",
+      "notes": "Selecciona una credencial WhatsApp OAuth API. El trigger recibe mensajes y fallos de entrega; no publiques hasta configurar tu propia aplicación de Meta.",
+      "webhookId": "fc18ee46-631e-5096-a952-003a9c1cf5a5"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "8272a6f5-f096-5ac8-ab81-f9e4054838a7",
+              "name": "businessPhone",
+              "type": "string",
+              "value": "REPLACE_WITH_BUSINESS_PHONE"
+            },
+            {
+              "id": "16ec1320-ccb3-56b1-99b3-4ef588b0449a",
+              "name": "managerPhone",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "id": "f28fb0c6-0a18-5de8-a31d-099550ca5e6b",
+              "name": "sessionsTableId",
+              "type": "string",
+              "value": "REPLACE_WITH_SESSIONS_TABLE_ID"
+            },
+            {
+              "id": "feb1b8a8-51c3-5afd-aa7a-5459d6d3ad24",
+              "name": "requestsTableId",
+              "type": "string",
+              "value": "REPLACE_WITH_REQUESTS_TABLE_ID"
+            },
+            {
+              "id": "71a9099c-b930-5818-9525-2f54d652f0cb",
+              "name": "businessConfigJson",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        208,
+        784
+      ],
+      "id": "24497835-fa75-5e85-b5e9-1071c418f675",
+      "name": "Configurar negocio",
+      "notes": "Completa los números, IDs de tus tablas y configuración del negocio. No almacenes tokens aquí; utiliza las credenciales de n8n."
+    },
+    {
+      "parameters": {
+        "jsCode": ""
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        432,
+        784
+      ],
+      "id": "641914d9-5662-53c5-9923-c1a367189752",
+      "name": "Normalizar Meta",
+      "notes": "Valida que el evento corresponda al número configurado; excluye autoenvíos y mensajes no admitidos."
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        640,
+        784
+      ],
+      "id": "191f03e8-29a0-587b-ae9e-bf88786a5c6d",
+      "name": "Procesar uno por uno",
+      "notes": "Procesa un mensaje a la vez dentro del evento. Esta secuencia no garantiza exclusión entre ejecuciones simultáneas."
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all();"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        864,
+        864
+      ],
+      "id": "fb1e1da8-bf11-5bd7-9c35-b689e23c12ed",
+      "name": "Mensaje actual"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Configurar negocio').first().json.sessionsTableId }}"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "Telefono",
+              "keyValue": "={{ $json.phone }}"
+            },
+            {
+              "keyName": "Intencion",
+              "keyValue": "_sesion"
+            }
+          ]
+        },
+        "returnAll": true,
+        "matchType": "allConditions"
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1088,
+        864
+      ],
+      "id": "6a9d4f2c-293a-50fc-92fb-9f6078dea757",
+      "name": "Leer sesion",
+      "alwaysOutputData": true,
+      "notes": "Selecciona la misma tabla de sesiones que en Guardar sesion. Columnas string: Telefono, Cliente, Intencion, Mensaje, Respuesta, Fecha, Estado."
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{json: {message: $('Mensaje actual').first(0, $runIndex).json, rows: $input.all().map(item => item.json)}, pairedItem: {item: 0}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1312,
+        864
+      ],
+      "id": "214f34d8-c8f5-5a8f-a91e-c5ac4a4cfb88",
+      "name": "Agrupar sesion"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Configurar negocio').first().json.requestsTableId }}"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "Intencion",
+              "condition": "neq",
+              "keyValue": "_sesion"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "id": "2bb8a75a-ad1e-54db-857d-9a0e93515789",
+      "name": "Leer solicitudes",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1520,
+        864
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": ""
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1744,
+        864
+      ],
+      "id": "871f463e-9894-55b0-a97f-2b3276114311",
+      "name": "Procesar conversacion",
+      "notes": "Motor de reglas y estados, configurable mediante businessConfigJson. Sin llamadas a modelos de IA."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "0aad8eca-078e-5db4-b375-630303163c0d",
+              "leftValue": "={{ $json.saveRequest }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1968,
+        864
+      ],
+      "id": "70115b93-e844-5000-82d7-1228817bd751",
+      "name": "Hay solicitud para guardar"
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Configurar negocio').first().json.requestsTableId }}"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "Telefono",
+              "keyValue": "={{ $('Procesar conversacion').item.json.requestPhone }}"
+            },
+            {
+              "keyName": "Intencion",
+              "keyValue": "={{ $('Procesar conversacion').item.json.requestKey }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Telefono": "={{ $('Procesar conversacion').item.json.requestPhone }}",
+            "Cliente": "={{ $('Procesar conversacion').item.json.requestCustomerName }}",
+            "Intencion": "={{ $('Procesar conversacion').item.json.requestKey }}",
+            "Mensaje": "={{ $('Procesar conversacion').item.json.requestJson }}",
+            "Respuesta": "={{ $('Procesar conversacion').item.json.reply }}",
+            "Fecha": "={{ $('Procesar conversacion').item.json.processedAt }}",
+            "Estado": "={{ $('Procesar conversacion').item.json.requestState }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Telefono",
+              "displayName": "Telefono",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Cliente",
+              "displayName": "Cliente",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Intencion",
+              "displayName": "Intencion",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Mensaje",
+              "displayName": "Mensaje",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Respuesta",
+              "displayName": "Respuesta",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Fecha",
+              "displayName": "Fecha",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Estado",
+              "displayName": "Estado",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false,
+          "column": [
+            {
+              "name": "Telefono"
+            },
+            {
+              "name": "Cliente"
+            },
+            {
+              "name": "Intencion"
+            },
+            {
+              "name": "Mensaje"
+            },
+            {
+              "name": "Respuesta"
+            },
+            {
+              "name": "Fecha"
+            },
+            {
+              "name": "Estado"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2192,
+        736
+      ],
+      "id": "3a1e3b63-e33c-5335-825d-2af3c02c1cab",
+      "name": "Guardar solicitud"
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Configurar negocio').first().json.sessionsTableId }}"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "Telefono",
+              "keyValue": "={{ $('Procesar conversacion').item.json.phone }}"
+            },
+            {
+              "keyName": "Intencion",
+              "keyValue": "_sesion"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Telefono": "={{ $('Procesar conversacion').item.json.phone }}",
+            "Cliente": "={{ $('Procesar conversacion').item.json.customerName }}",
+            "Intencion": "_sesion",
+            "Mensaje": "={{ $('Procesar conversacion').item.json.sessionJson }}",
+            "Respuesta": "={{ $('Procesar conversacion').item.json.reply }}",
+            "Fecha": "={{ $('Procesar conversacion').item.json.processedAt }}",
+            "Estado": "Sesion"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Telefono",
+              "displayName": "Telefono",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Cliente",
+              "displayName": "Cliente",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Intencion",
+              "displayName": "Intencion",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Mensaje",
+              "displayName": "Mensaje",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Respuesta",
+              "displayName": "Respuesta",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Fecha",
+              "displayName": "Fecha",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Estado",
+              "displayName": "Estado",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false,
+          "column": [
+            {
+              "name": "Telefono"
+            },
+            {
+              "name": "Cliente"
+            },
+            {
+              "name": "Intencion"
+            },
+            {
+              "name": "Mensaje"
+            },
+            {
+              "name": "Respuesta"
+            },
+            {
+              "name": "Fecha"
+            },
+            {
+              "name": "Estado"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "2c7992f8-aaff-5a6a-8ae4-a2e3dd50160d",
+      "name": "Guardar sesion",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2400,
+        896
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": ""
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2624,
+        896
+      ],
+      "id": "e759218e-ebb4-5175-8430-9f69e9ddb64b",
+      "name": "Preparar respuestas Meta"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "a9f90bf3-5e4d-589e-81fc-7cf638ec8f88",
+              "leftValue": "={{ !$json.skipSend }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2848,
+        896
+      ],
+      "id": "2b753c21-eab1-5b75-9265-0dc0976a8028",
+      "name": "Hay mensaje para enviar"
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "phoneNumberId": "={{ $json.phoneNumberId }}",
+        "recipientPhoneNumber": "={{ $json.to }}",
+        "textBody": "={{ $json.text }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [
+        3072,
+        816
+      ],
+      "id": "fd8c9147-b255-5980-8109-e4af489829e8",
+      "name": "Enviar por Meta",
+      "onError": "continueErrorOutput",
+      "notes": "Selecciona una credencial WhatsApp API. Separa aceptación de entrega. Los fallos se dirigen a la rama de error.",
+      "webhookId": "ec1435b0-fb10-52f1-9623-510880672457"
+    },
+    {
+      "parameters": {
+        "jsCode": ""
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3280,
+        816
+      ],
+      "id": "6e8b6dfd-9b36-57ee-8192-b0c038c98755",
+      "name": "Comprobar aceptacion de Meta"
+    },
+    {
+      "parameters": {
+        "errorMessage": "={{ 'Meta no aceptó el envío. Consulta la ejecución y revisa credenciales, destinatario y ventana de atención. ' + ($json.error?.message || $json.message || '') }}"
+      },
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        3280,
+        1040
+      ],
+      "id": "fe217c08-2b63-5e63-861f-fa64bc94b86f",
+      "name": "Error al enviar por Meta"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        3072,
+        1216
+      ],
+      "id": "63b434ce-abe1-5416-ad61-5c820ed5f95b",
+      "name": "Continuar siguiente mensaje"
+    },
+    {
+      "parameters": {
+        "content": "## Configuración antes de activar\n1. Importa la plantilla y completa Configurar negocio: businessPhone, managerPhone (opcional), sessionsTableId y requestsTableId.\n2. Personaliza businessConfigJson con catálogo, horarios, ubicación y formularios. El ejemplo no contiene datos de un negocio real.\n3. Recibir WhatsApp Meta: credencial WhatsApp OAuth API (Client ID y Client Secret).\n4. Enviar por Meta: credencial WhatsApp API (Access Token y Business Account ID). Nunca pegues tokens en los nodos Code.\n5. Crea dos Data Tables con columnas string: Telefono, Cliente, Intencion, Mensaje, Respuesta, Fecha, Estado.\n6. Prueba con tu propia app y número. La app admite un webhook; alternar prueba y producción cambia la suscripción.\nLee docs/SETUP.md para detalles.",
+        "height": 610,
+        "width": 830,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "0e566618-1063-5eb7-a809-4f9725a0d065",
+      "name": "Pasos para conectar Meta"
+    },
+    {
+      "parameters": {
+        "content": "## Prototipo configurable\nLógica validada localmente con datos sintéticos. La importación y ejecución real deben verificarse en tu versión de n8n.\nPrueba: hola → pedido → nombre → producto y cantidad → fecha → hora → pago → sí. La solicitud debe guardarse como Pendiente.\nPrueba también cita, cotización, facturación, asesor, estado y comandos del responsable.\nEl responsable usa otro número: pendientes; aprobar FOLIO; rechazar FOLIO motivo.\nLos avisos requieren una ventana de WhatsApp válida. Esta plantilla no incluye mensajes de plantilla aprobados.\nSolo guarda referencias de archivos; no los descarga, no interpreta audios ni imágenes y no emite facturas.\nDeduplicación reciente por sesión; concurrencia entre ejecuciones y recuperación después de fallos requieren validación adicional.\nLee docs/TESTING.md y docs/ARCHITECTURE.md.",
+        "height": 610,
+        "width": 830,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        928,
+        0
+      ],
+      "id": "8c594fd3-a106-5eda-b9bc-2a416e1f130d",
+      "name": "Pruebas y alcance"
+    }
+  ],
+  "connections": {
+    "Recibir WhatsApp Meta": {
+      "main": [
+        [
+          {
+            "node": "Configurar negocio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Configurar negocio": {
+      "main": [
+        [
+          {
+            "node": "Normalizar Meta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalizar Meta": {
+      "main": [
+        [
+          {
+            "node": "Procesar uno por uno",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mensaje actual": {
+      "main": [
+        [
+          {
+            "node": "Leer sesion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer sesion": {
+      "main": [
+        [
+          {
+            "node": "Agrupar sesion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agrupar sesion": {
+      "main": [
+        [
+          {
+            "node": "Leer solicitudes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer solicitudes": {
+      "main": [
+        [
+          {
+            "node": "Procesar conversacion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Procesar conversacion": {
+      "main": [
+        [
+          {
+            "node": "Hay solicitud para guardar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hay solicitud para guardar": {
+      "main": [
+        [
+          {
+            "node": "Guardar solicitud",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Guardar sesion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guardar solicitud": {
+      "main": [
+        [
+          {
+            "node": "Guardar sesion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guardar sesion": {
+      "main": [
+        [
+          {
+            "node": "Preparar respuestas Meta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar respuestas Meta": {
+      "main": [
+        [
+          {
+            "node": "Hay mensaje para enviar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hay mensaje para enviar": {
+      "main": [
+        [
+          {
+            "node": "Enviar por Meta",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Continuar siguiente mensaje",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar por Meta": {
+      "main": [
+        [
+          {
+            "node": "Comprobar aceptacion de Meta",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error al enviar por Meta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Comprobar aceptacion de Meta": {
+      "main": [
+        [
+          {
+            "node": "Procesar uno por uno",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Continuar siguiente mensaje": {
+      "main": [
+        [
+          {
+            "node": "Procesar uno por uno",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Procesar uno por uno": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Mensaje actual",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

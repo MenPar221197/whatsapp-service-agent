@@ -1,64 +1,93 @@
-# WhatsApp Service Agent — n8n + Meta
+# WhatsApp Business Agent · n8n
 
-Proyecto de automatización de Edgar Méndez (@MenPar221197), desarrollado dentro de Ragdeops a partir de un caso práctico de atención por WhatsApp. Esta publicación generaliza la implementación y elimina la configuración del negocio original. Desarrollo iterativo con asistencia de herramientas de IA; el motor de esta versión funciona por reglas JavaScript, sin LLM.
+[![Validate workflow](https://github.com/MenPar221197/whatsapp-service-agent/actions/workflows/validate.yml/badge.svg)](https://github.com/MenPar221197/whatsapp-service-agent/actions/workflows/validate.yml)
 
-## Qué resuelve
+Asistente configurable de atención al cliente por WhatsApp, construido con **n8n, JavaScript, Meta Cloud API y Data Tables**. Recibe mensajes, conserva el estado de la conversación, captura solicitudes y permite que una persona autorizada las apruebe o rechace.
 
-Recibe mensajes de WhatsApp, mantiene el estado de una conversación y captura solicitudes de pedidos, reservas, eventos, facturación y atención humana. Las solicitudes requieren revisión del encargado; el bot no cobra, confirma disponibilidad ni emite facturas automáticamente.
+Proyecto de portafolio de **[Edgar Méndez](https://github.com/MenPar221197)**, desarrollado dentro de Ragdeops con asistencia de herramientas de IA. La arquitectura parte de un piloto real y se presenta como una plantilla independiente, sin información del negocio original.
+
+> **Estado: prototipo configurable, validado localmente con datos sintéticos.** La plantilla requiere credenciales, tablas y pruebas de integración en n8n. La conversación usa reglas y estados explícitos; esta versión no incluye un LLM.
+
+**English:** A configurable WhatsApp customer-service workflow with persistent conversation state, request intake, authorized human review, and an explicit delivery-error path. Built with n8n and dependency-free JavaScript.
+
+## Funcionalidades
+
+- Catálogo, horarios y ubicación desde una configuración independiente.
+- Formularios para pedidos, citas, cotizaciones, solicitudes de factura y atención humana.
+- Confirmación de los datos antes de guardar una solicitud como `Pendiente`.
+- Consulta de estado limitada a las solicitudes del número que escribe.
+- Comandos del responsable: `pendientes`, `aprobar FOLIO` y `rechazar FOLIO motivo`.
+- Historial de IDs recientes para reducir respuestas duplicadas ante reintentos de Meta.
+- Validación de remitentes, bloqueo de autoenvíos y división de respuestas largas.
+- Registro de referencias de documentos para revisión humana.
+- Pruebas locales y validación automática mediante GitHub Actions.
 
 ## Arquitectura
 
 ```mermaid
 flowchart TD
- A[Evento de Meta] --> B[Validación y normalización]
- B --> C[Procesamiento por mensaje]
- C --> D[Lectura de sesiones y solicitudes]
- D --> E[Motor conversacional JavaScript]
- E --> F[Persistencia en Data Tables]
- F --> G[Preparación de respuestas]
- G --> H[Envío y comprobación de aceptación]
- H --> C
+    A[WhatsApp Trigger] --> B[Validar y normalizar]
+    B --> C[Procesar mensaje]
+    D[(Sesiones y solicitudes)] --> C
+    C --> E{Solicitud completa}
+    E -->|Sí| F[Guardar solicitud pendiente]
+    E -->|No| G[Guardar sesión]
+    F --> G
+    G --> D
+    G --> H[Preparar y enviar respuestas]
+    H --> I{Meta acepta}
+    I -->|Sí| J[Siguiente mensaje]
+    I -->|Error| K[Detener y registrar error]
+    J --> C
 ```
 
-## Estructura
+El workflow conserva 18 nodos de ejecución y 2 notas de configuración. Los módulos JavaScript se mantienen por separado y se incorporan al JSON mediante un generador reproducible.
 
-- `workflows/whatsapp-service-agent.json`: workflow importable, inactivo y sin credenciales.
-- `src/conversation.cjs`: motor extraído del nodo, para lectura y pruebas locales.
-- `config.example.json`: configuración comercial de ejemplo.
-- `tests/conversation.test.cjs`: pruebas de captura, duplicados, fechas y permisos.
+| Ruta | Contenido |
+| --- | --- |
+| [`workflows/whatsapp-service-agent.json`](workflows/whatsapp-service-agent.json) | Workflow completo para importar en n8n |
+| [`src/`](src/) | Normalización, conversación, preparación de respuestas y comprobación de aceptación |
+| [`config/business.example.json`](config/business.example.json) | Formularios y datos de ejemplo del negocio |
+| [`config/workflow-layout.json`](config/workflow-layout.json) | Nodos, conexiones y configuración de la plantilla |
+| [`config/data-tables.schema.json`](config/data-tables.schema.json) | Esquema de las dos tablas |
+| [`examples/inbound-message.json`](examples/inbound-message.json) | Evento sintético del WhatsApp Trigger |
+| [`tests/`](tests/) | Pruebas de conversación, transporte y publicación |
+| [`docs/`](docs/) | Instalación, arquitectura y pruebas de integración |
 
-El JSON es el artefacto ejecutable de n8n. Al modificar el motor independiente, sincroniza su contenido con el nodo Procesar conversacion antes de importar.
+## Inicio rápido
 
-## Instalación
+1. Descarga e importa [`workflows/whatsapp-service-agent.json`](workflows/whatsapp-service-agent.json) en n8n mediante **Import from File**.
+2. Crea las tablas de sesiones y solicitudes con las columnas descritas en [`docs/SETUP.md`](docs/SETUP.md).
+3. Completa el nodo **Configurar negocio** con tus números, IDs de tablas y `businessConfigJson`.
+4. Selecciona las credenciales de Meta en **Recibir WhatsApp Meta** y **Enviar por Meta**.
+5. Realiza las pruebas de [`docs/TESTING.md`](docs/TESTING.md) antes de activar el flujo.
 
-1. Usa una instancia de n8n que incluya WhatsApp Trigger, WhatsApp y Data Tables; verifica compatibilidad con los typeVersion del JSON.
-2. Importa el JSON sin activarlo.
-3. Selecciona las credenciales de Meta requeridas por Recibir WhatsApp Meta y Enviar por Meta dentro de n8n. No guardes secretos en Git.
-4. En Configurar Meta, completa businessPhone con código de país y solo dígitos. managerPhone es opcional y debe ser distinto al número del bot.
-5. Crea dos Data Tables: sesiones y solicitudes. Ambas usan columnas de tipo string: Telefono, Cliente, Intencion, Mensaje, Respuesta, Fecha y Estado. Selecciona sesiones en Leer sesion/Guardar sesion y solicitudes en Leer solicitudes/Guardar solicitud.
-6. Personaliza el objeto config en Procesar conversacion siguiendo config.example.json. El catálogo, horario y ubicación están vacíos o son ejemplos.
-7. Configura el webhook público de Meta para tu instancia y comprueba las suscripciones antes de activar: otra instalación puede compartir la misma app.
-8. Envía mensajes desde un número distinto; comprueba ejecuciones, persistencia y entrega real. Configura el encargado antes de probar pendientes, aprobar FOLIO o rechazar FOLIO motivo.
+El número del responsable es opcional y debe ser distinto al número del bot. Los tokens se almacenan en el gestor de credenciales de n8n.
 
-## Pruebas locales
+## Desarrollo y validación
 
-```sh
-node --test tests/conversation.test.cjs
+Requiere Node.js 22.8 o posterior. Las pruebas y el generador no necesitan dependencias externas ni acceso a Meta.
+
+```bash
+git clone https://github.com/MenPar221197/whatsapp-service-agent.git
+cd whatsapp-service-agent
+npm run build
+npm run check
+npm test
 ```
 
-Ejemplo ficticio: pedido → Ana Ejemplo → 2 porciones de comida → 2030-10-05 → 10:00 → efectivo → sí. Comprueba la creación de una solicitud Pendiente; el encargado decide posteriormente.
+Edita los módulos de `src/`, la configuración pública de ejemplo o el diseño de nodos, y vuelve a generar el workflow con `npm run build`. `npm run check` detecta diferencias entre las fuentes y el JSON publicado.
 
-## Alcance y pendientes
+## Alcance actual
 
-- Mantiene sesiones y una lista limitada de IDs vistos para reducir duplicados.
-- Procesa secuencialmente mensajes de un evento; concurrencia entre ejecuciones y recuperación transaccional pendientes.
-- Guarda referencias de adjuntos, sin descarga privada, OCR ni verificación fiscal.
-- Requiere comprobar las ventanas de atención de WhatsApp. No incluye plantillas para avisos fuera de ventana.
-- Un ID aceptado por Meta no demuestra entrega; los eventos de fallo requieren seguimiento.
-- Antes de producción faltan pruebas de integración con credenciales, tablas y números reales. Las pruebas locales no certifican entrega por WhatsApp.
-- Se leen todas las solicitudes: para escalar, implementar consultas más acotadas, retención y control de acceso.
-- El ejemplo usa fechas y normalización telefónica para México; adapta estas reglas para otros países.
+Las solicitudes requieren revisión humana. El flujo no calcula inventario, cobra, emite facturas, descarga documentos ni interpreta imágenes o audios. La aceptación de un mensaje por Meta no demuestra su entrega.
 
-## Publicación y privacidad
+Los avisos usan mensajes de texto y requieren una ventana de atención válida. No hay plantillas aprobadas incluidas, una cola de reintentos ni garantía de procesamiento único entre ejecuciones simultáneas. Estos límites y las siguientes mejoras están descritos en [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
-Se eliminaron teléfonos, dirección, catálogo, precios, IDs de tablas, referencias a credenciales, datos fijados y metadatos de la instancia original. Configura los datos reales solo en tu instalación privada. La configuración original no se distribuye.
+## Referencias técnicas
+
+- [Credenciales de WhatsApp en n8n](https://docs.n8n.io/integrations/builtin/credentials/whatsapp/)
+- [WhatsApp Trigger y uso de un único webhook por app](https://docs.n8n.io/integrations/builtin/trigger-nodes/n8n-nodes-base.whatsapptrigger/)
+- [Data Table: operaciones de lectura y escritura](https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.datatable/)
+
+WhatsApp, Meta y n8n pertenecen a sus respectivos titulares. Este repositorio documenta una implementación independiente.

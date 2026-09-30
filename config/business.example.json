@@ -1,0 +1,61 @@
+{
+  "businessName": "Negocio de demostración",
+  "timeZone": "America/Mexico_City",
+  "folioPrefix": "REQ",
+  "sessionTtlHours": 24,
+  "hours": "",
+  "address": "",
+  "mapsUrl": "",
+  "catalogUrl": "",
+  "catalog": [],
+  "forms": {
+    "pedido": {
+      "title": "Pedido",
+      "aliases": ["pedido", "ordenar"],
+      "fields": [
+        { "key": "nombre", "label": "Nombre", "type": "name", "question": "¿A nombre de quién registramos la solicitud?" },
+        { "key": "producto", "label": "Producto y cantidad", "type": "text", "question": "Describe el producto y la cantidad que necesitas." },
+        { "key": "fecha", "label": "Fecha solicitada", "type": "date", "question": "¿Para qué fecha? Usa DD/MM/AAAA, hoy o mañana." },
+        { "key": "hora", "label": "Hora solicitada", "type": "time", "question": "¿A qué hora? Usa formato de 24 horas, por ejemplo 14:30." },
+        { "key": "pago", "label": "Pago preferido", "type": "choice", "options": ["efectivo", "transferencia", "tarjeta"], "question": "¿Qué forma de pago prefieres: efectivo, transferencia o tarjeta? No envíes datos de tu tarjeta." }
+      ]
+    },
+    "cita": {
+      "title": "Cita",
+      "aliases": ["cita", "agendar"],
+      "fields": [
+        { "key": "nombre", "label": "Nombre", "type": "name", "question": "¿A nombre de quién registramos la cita?" },
+        { "key": "servicio", "label": "Servicio", "type": "text", "question": "¿Qué servicio necesitas?" },
+        { "key": "fecha", "label": "Fecha solicitada", "type": "date", "question": "¿Para qué fecha? Usa DD/MM/AAAA, hoy o mañana." },
+        { "key": "hora", "label": "Hora solicitada", "type": "time", "question": "¿A qué hora? Usa formato de 24 horas, por ejemplo 09:00." }
+      ]
+    },
+    "cotizacion": {
+      "title": "Cotización",
+      "aliases": ["cotizacion", "cotizar"],
+      "fields": [
+        { "key": "nombre", "label": "Nombre", "type": "name", "question": "¿A nombre de quién registramos la cotización?" },
+        { "key": "servicio", "label": "Producto o servicio", "type": "text", "question": "¿Qué producto o servicio quieres cotizar?" },
+        { "key": "detalles", "label": "Detalles", "type": "text", "question": "Describe cantidades, requisitos y cualquier otro detalle relevante." }
+      ]
+    },
+    "facturacion": {
+      "title": "Solicitud de factura",
+      "aliases": ["facturacion", "factura"],
+      "fields": [
+        { "key": "nombre", "label": "Nombre", "type": "name", "question": "¿A nombre de quién registramos la solicitud?" },
+        { "key": "correo", "label": "Correo", "type": "email", "sensitive": true, "question": "¿A qué correo deseas recibir la respuesta?" },
+        { "key": "rfc", "label": "RFC", "type": "rfc", "sensitive": true, "question": "Escribe tu RFC, por favor." },
+        { "key": "archivos", "label": "Archivos", "type": "documents", "sensitive": true, "question": "Envía los documentos fiscales y el comprobante en PDF o imagen. Al terminar escribe listo. Se registran referencias para revisión humana; este flujo no emite facturas." }
+      ]
+    },
+    "asesor": {
+      "title": "Atención humana",
+      "aliases": ["asesor", "humano", "ayuda humana"],
+      "fields": [
+        { "key": "nombre", "label": "Nombre", "type": "name", "question": "¿Cuál es tu nombre?" },
+        { "key": "motivo", "label": "Motivo", "type": "text", "question": "¿Qué necesitas que revise una persona del negocio?" }
+      ]
+    }
+  }
+}

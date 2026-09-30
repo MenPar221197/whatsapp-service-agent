@@ -1,0 +1,14 @@
+{
+  "name": "whatsapp-service-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Configurable WhatsApp customer-service workflow built with n8n and Meta Cloud API",
+  "author": "Edgar Méndez (MenPar221197)",
+  "type": "commonjs",
+  "scripts": {
+    "build": "node scripts/build-workflow.js",
+    "check": "node scripts/build-workflow.js --check",
+    "test": "node --test --test-isolation=none tests/*.test.js"
+  },
+  "engines": { "node": ">=22.8" }
+}

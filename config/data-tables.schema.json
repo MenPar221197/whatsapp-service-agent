@@ -1,0 +1,15 @@
+{
+  "tables": [
+    { "name": "agent_sessions", "purpose": "Conversation state; logical key: Telefono + Intencion (_sesion)" },
+    { "name": "agent_requests", "purpose": "Requests and human decisions; logical key: Telefono + Intencion (type:provider_event_id)" }
+  ],
+  "columns": [
+    { "name": "Telefono", "type": "string" },
+    { "name": "Cliente", "type": "string" },
+    { "name": "Intencion", "type": "string" },
+    { "name": "Mensaje", "type": "string" },
+    { "name": "Respuesta", "type": "string" },
+    { "name": "Fecha", "type": "string" },
+    { "name": "Estado", "type": "string" }
+  ]
+}

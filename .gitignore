@@ -1,7 +1,12 @@
+node_modules/
 .env
 .env.*
 !.env.example
-config.local.json
-node_modules/
-exports/
+config/business.local.json
+*.local.json
 *.log
+coverage/
+private/
+exports/
+credentials/
+.DS_Store
